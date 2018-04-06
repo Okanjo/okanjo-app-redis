@@ -1,15 +1,33 @@
 sudo: true
 language: node_js
 node_js:
-  - "lts/*"
-  - "6"
+- lts/*
+- '6'
 services:
-  - docker
+- docker
 before_install:
-  - docker pull redis:3
-  - docker run -d -p 6379:6379 redis:3
-  - sleep 5
+- docker pull redis:3
+- docker run -d -p 6379:6379 redis:3
+- sleep 5
 script:
-  - npm run report
+- npm run report
 after_script:
-  - "npm install coveralls@2.10.0 && cat ./coverage/lcov.info | ./node_modules/.bin/coveralls"
+- npm install coveralls@2.10.0 && cat ./coverage/lcov.info | ./node_modules/.bin/coveralls
+before_deploy:
+- mkdir ./deploy && cp ./README.md ./deploy
+deploy:
+  provider: s3
+  access_key_id:
+    secure: is6AUj7/NY6iB+CT9yEl2WMoXfu21Anz1ApgOqbrn0bHG4dDFYLRrO+33vxvtSUnHpgYj+b0dGjzEXp6JJ1q/VPsxm7ONBV8AreTKJhSIeGfxc5tL+xdglxK/w9mcTQvC+TH3dA4IzoPcL4c7FLbX2Wv3oLNE889uu2ZafkVsPtwaIiI+o9rY6GEQFqqa8QG6DnnDU4/1rDHFK2+fK+FcirIcFKLOXxkRNaPldeSrhKT/fpeHlpoUU5Y9JekeOyrsy9LDr09oyngO+oEkacRPrL34Xlxb1UobYI3DjBIoW2ApxC5xx55CzZ7SNrraawJhFmFvD2foujmyuC2MK4VkuhbX8+urp4XdpzwwhiYwRFJFgbChHJ3NkVaNWi1g7tJahbNvlU2zPK9v1Cu3iyUQ5TC9qazWbKa2b7rWwvZ3LqPyzTcm/JEejbVd56ZCr9/zf51xxuKk5l60VFb35erb+0GcM3AxYCJteVLIbQvO3yfN8SqWbLBAcqL/lnMVcTAxZbg7MDTOswaDMreXCb+SMCkJ6r4KszF4K8iERofZLfHR5VGbaRI8Pz7E6xKUskUfPQsCi2jADymxT67b3SYPkiGJt9XFHWZxvIQay/4FJlmK6unTbZFtLWG7/6vy9J6akvbIOCNRYEViM93DC226RApDK72lmT539U8yyGKn4k=
+  secret_access_key:
+    secure: U7nmXJ0ROHUWieSCWVpSLBFiW2+6ViuOQ2RkiThdyGaJzaCMmJ5rA3pRraPpvWt2AvhHVZY5VbtBK6lau1EXZ2tDlqAsqq4rIh3GBpsh3eV+PIi6Vg+hv+/KK2hmMMLb/uxTHqZn9VCfm4QE4mwcDqLNGXF+utHQTxbO4WqNHywkouyUKXpuqH8UANBFz1VDafYBYJ/ugH+vviDG/m0/ch7PKGiVY0/Ly0q4D+NLXLupUzkCGla5WXHR3UkBjzRJQ1fRCXS4FRsprb/182eTHGphoBwKSsYJZdY5YRHtFBu9qvY7qmsPJjfcVyHANQ6/6IfXZ7jUe0HtZ7RwnKdEOdXgvv0DnNXPQkzidv2jqXKjaw7H/rnC0dTSIeuMXmtkpA0dEjn2ifdQ3sL9c8b2hEy9ANC6nwAQKjpuFyFixFrj7iQJP5C4+/VhZVafsJ/JTmXUBM/mWRcUEThYItEc5slZ0R/UjN7ABPOfDgBVxesTRpjgfiCYJI7k7XEPBhis6lzkFMTwRsrw2MxulrNM5xjaCAWOL4vY9y1ekLyurP9Cwvk7aBPNHXvY3ytnL4LU9kh3VP0VdoEzJyOYrZWzuzdQMe40U4955pYRpQ1qVV0NUCqn/jvENGlQCCaWYsObBw6kC10kvI1uO8Bi6q6McRwwNlSJU1CzILXcZ4JaAYQ=
+  bucket: okanjo-docs
+  skip_cleanup: true
+  upload-dir: okanjo-app-redis
+  acl: public_read
+  detect_encoding: true
+  default_text_charset: 'utf-8'
+  local_dir: deploy
+  on:
+    branch: master
+    repo: Okanjo/okanjo-app-redis
