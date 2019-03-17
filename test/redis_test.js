@@ -1,4 +1,5 @@
 const should = require('should');
+const Util = require('util');
 
 describe('RedisService', function() {
 
@@ -66,7 +67,6 @@ describe('RedisService', function() {
         })
 
     });
-
 
     it('can getset properly', function(done) {
 
@@ -146,6 +146,38 @@ describe('RedisService', function() {
 
     });
 
+    it('can getset properly (async)', async () => {
+
+        const redis = app.services.redis,
+            key = 'unit_test_getset_cache_key2';
+
+        const obj = await redis.getSet(
+            // Cache key
+            key,
+
+            // Not set closure
+            (callback) => {
+                // callback(err, obj, ttl_in_ms);
+                callback(undefined, { ok: true, val: 1 }, 50);
+            }
+        );
+
+        obj.should.deepEqual({ ok: true, val: 1 });
+
+        const obj2 = await redis.getSet(
+            // Cache key
+            key,
+
+            // Not set closure
+            (callback) => {
+                // callback(err, obj, ttl_in_ms);
+                callback(undefined, { ok: true, val: 2 }, 50);
+            }
+        );
+
+        obj2.should.deepEqual(obj);
+
+    });
 
     it('should handle getSet cancellation', function(done) {
 
@@ -175,6 +207,30 @@ describe('RedisService', function() {
 
     });
 
+    it('should handle getSet cancellation (async)', async () => {
+
+        const redis = app.services.redis,
+            key = 'unit_test_getset_error_cache_key2';
+
+        try {
+            await redis.getSet(
+                // Cache key
+                key,
+
+                // Not set closure
+                (callback) => {
+                    // callback(err, obj, ttl_in_ms);
+                    callback(new Error("Nope, don't set this"), {ok: true, val: 2}, 50);
+                }
+            );
+            // noinspection ExceptionCaughtLocallyJS
+            throw new Error('SHOULD NOT HAVE GOTTEN HERE');
+        } catch (err) {
+            should(err).be.instanceOf(Error);
+            err.message.should.match(/Nope/);
+        }
+
+    });
 
     it('should handle setting undefined', function(done) {
         const redis = app.services.redis,
@@ -250,6 +306,32 @@ describe('RedisService', function() {
         });
     });
 
+    it('should handle json parse issues (async)', async () => {
+        const redis = app.services.redis,
+            key = 'unit_test_getset_error_cache_key2';
+
+        // Set a key with invalid json
+        const set = Util.promisify(redis.redis.set.bind(redis.redis));
+        await set(key, "this is not json", 'PX', 50);
+
+        try {
+            await redis.getSet(
+                // Cache key
+                key,
+
+                // Not set closure
+                () => {
+                    throw new Error('This should not fire');
+                }
+            );
+            // noinspection ExceptionCaughtLocallyJS
+            throw new Error('SHOULD NOT THROW');
+        } catch (err) {
+            should(err).be.ok();
+            err.should.match(/SyntaxError/);
+        }
+    });
+
     describe('Resource locking', () => {
 
         it('should work', (done) => {
@@ -271,7 +353,20 @@ describe('RedisService', function() {
             );
         });
 
-        it('should be able to make an artibrary instance', (done) => {
+        it('should work (async)', async () => {
+            await app.services.redis.lockResource(
+                'account',
+                '12345',
+                (release, lock) => {
+                    release.should.be.ok();
+                    lock.should.be.ok();
+
+                    release();
+                }
+            );
+        });
+
+        it('should be able to make an arbitrary instance', (done) => {
 
             const locker = app.services.redis.createRedlock({
                 driftFactor: 0.01, // the expected clock drift; for more details, see http://redis.io/topics/distlock

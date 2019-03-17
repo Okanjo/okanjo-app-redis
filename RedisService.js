@@ -4,6 +4,7 @@ const Redis = require('redis');
 const Redlock = require('redlock');
 const Subscriber = require('./Subscriber');
 const Governor = require('./Governor');
+const Util = require('util');
 
 /**
  * Redis management service
@@ -74,6 +75,7 @@ class RedisService {
             .on('error', (err) => this._handleError(err))
             .on('reconnecting', (event) => this._handleReconnect(event));
 
+        this._publish = Util.promisify(this.redis.publish.bind(this.redis));
 
         // Init redlock (distributed mutex locks) on the client instance
         if (this.redlockConfig) {
@@ -141,37 +143,44 @@ class RedisService {
      * Gets the cached key value from Redis or sets the value if not present
      * @param key
      * @param notCachedClosure
-     * @param callback
+     * @param [callback]
      */
     getSet(key, notCachedClosure, callback) {
-        this.redis.get(key, (err, res) => {
-            /* istanbul ignore if: redis edge case */
-            if (err) {
-                this.app.report("Blew up in redis getSet", err, key);
-                callback(err, undefined, false);
-            } else {
-                if (res) {
-                    try {
-                        res = JSON.parse(res);
-                    } catch (e) {
-                        this.app.report("Blew up parsing redis key value in getSet", e, key);
-                        return callback(e, undefined, false);
-                    }
-
-                    // Don't callback inside try-catch so we don't catch upstream errors - that's your problem.
-                    callback(err, res, true);
+        return new Promise((resolve, reject) => {
+            this.redis.get(key, (err, res) => {
+                /* istanbul ignore if: redis edge case */
+                if (err) {
+                    this.app.report("Blew up in redis getSet", err, key);
+                    if (callback) return callback(err, undefined, false);
+                    return reject(err);
                 } else {
-                    notCachedClosure((err, obj, ttl) => {
-                        // only cache if the value is not undefined
-                        if (!err && obj !== undefined) {
-                            this.redis.set(key, JSON.stringify(obj), 'PX', ttl);
-                            callback(err, obj, false);
-                        } else {
-                            callback(err, undefined, false);
+                    if (res) {
+                        try {
+                            res = JSON.parse(res);
+                        } catch (e) {
+                            this.app.report("Blew up parsing redis key value in getSet", e, key);
+                            if (callback) return callback(e, undefined, false);
+                            return reject(e);
                         }
-                    });
+
+                        // Don't callback inside try-catch so we don't catch upstream errors - that's your problem.
+                        if (callback) return callback(err, res, true);
+                        return resolve(res)
+                    } else {
+                        notCachedClosure((err, obj, ttl) => {
+                            // only cache if the value is not undefined
+                            if (!err && obj !== undefined) {
+                                this.redis.set(key, JSON.stringify(obj), 'PX', ttl);
+                                if (callback) return callback(err, obj, false);
+                                return resolve(obj);
+                            } else {
+                                if (callback) return callback(err, undefined, false);
+                                return reject(err);
+                            }
+                        });
+                    }
                 }
-            }
+            });
         });
     }
 
@@ -184,30 +193,39 @@ class RedisService {
      * @param {function} callback – Fired when completed or failed
      */
     lock(redlock, key, ttl, whenLocked, callback) {
-        redlock.lock(key, ttl, (err, lock) => {
-            /* istanbul ignore if: out of scope */
-            if (err) {
-                this.app.report('Failed to obtain resource lock!', { err, key, ttl });
-                err.lockFailed = true; // you can test for this specific use case here
-                callback(err);
-            } else {
+        return new Promise((resolve, reject) => {
+            redlock.lock(key, ttl, async (err, lock) => {
+                /* istanbul ignore if: out of scope */
+                if (err) {
+                    this.app.report('Failed to obtain resource lock!', { err, key, ttl });
+                    err.lockFailed = true; // you can test for this specific use case here
+                    if (callback) return callback(err);
+                    return reject(err);
+                } else {
 
-                // Provide the done function to let the user call when they're done with the lock, and also expose the raw lock so they may extend it if they choose to do so.
-                const done = (userErr) => {
-                    // Attempt to clear the lock
-                    lock.unlock((err) => {
+                    // Provide the done function to let the user call when they're done with the lock, and also expose the raw lock so they may extend it if they choose to do so.
+                    const done = (userErr) => {
+                        // Attempt to clear the lock
+                        lock.unlock((err) => {
 
-                        /* istanbul ignore if: out of scope */
-                        if (err) {
-                            this.app.report('Failed to release resource lock!', { err, key, ttl });
-                        }
+                            /* istanbul ignore if: out of scope */
+                            if (err) {
+                                this.app.report('Failed to release resource lock!', { err, key, ttl });
+                            }
 
-                        callback(userErr);
-                    });
-                };
+                            if (callback) return callback(userErr);
+                            /* istanbul ignore if: out of scope */
+                            if (userErr) {
+                                reject(userErr);
+                            } else {
+                                resolve();
+                            }
+                        });
+                    };
 
-                whenLocked(done, lock);
-            }
+                    await whenLocked(done, lock);
+                }
+            });
         });
     }
 
@@ -220,7 +238,7 @@ class RedisService {
      */
     lockResource(resource_type, resource_id, whenLocked, callback) {
         const key = `${this.resourceLockKeyPrefix}:${resource_type}:${resource_id}`;
-        this.lock(this.redlock, key, this.resourceLockTTL, whenLocked, callback);
+        return this.lock(this.redlock, key, this.resourceLockTTL, whenLocked, callback);
     }
 
     /**
@@ -263,7 +281,11 @@ class RedisService {
      * @param {function} [callback] – Function to fire when completed
      */
     publish(channel, message, callback) {
-        this.redis.publish(channel, JSON.stringify(message), callback);
+        if (callback) {
+            this.redis.publish(channel, JSON.stringify(message), callback);
+        } else {
+            return this._publish(channel, JSON.stringify(message));
+        }
     }
 }
 

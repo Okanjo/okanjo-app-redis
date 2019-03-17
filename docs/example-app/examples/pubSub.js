@@ -1,7 +1,7 @@
 "use strict";
 
 // const RedisService = require('okanjo-app-redis');
-const RedisService = require('../../../RedisService');
+// const RedisService = require('../../../RedisService');
 
 module.exports = (app, callback) => {
     console.log('\nPub/Sub example');

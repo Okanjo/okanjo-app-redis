@@ -53,6 +53,7 @@ class Subscriber extends EventEmitter {
      */
     _connect(callback) {
         const RedisService = require('./RedisService'); // put here to prevent dependency circle
+        // noinspection JSUnusedGlobalSymbols
         this._service = new RedisService(this.app, this.config, () => {
             this._subscribe(callback);
         });
@@ -149,6 +150,7 @@ class Subscriber extends EventEmitter {
      * @private
      */
     _updateSubscriberStatus(count) {
+        // noinspection JSUnusedGlobalSymbols
         this._subscribed = count > 0;
     }
 
@@ -158,30 +160,44 @@ class Subscriber extends EventEmitter {
      * @param [callback]
      */
     unsubscribe(channels, callback) {
-
         if (typeof channels === "function") {
             callback = channels;
             channels = null;
         }
 
-        let args = [];
-        if (channels) {
-            args = [].concat(channels); // given channels
-        } else {
-            args = [].concat(this.channels); // all channels if none given
-        }
+        return new Promise((resolve, reject) => {
 
-        if (callback) args.push(callback);
+            const done = (err) => {
+                if (callback) {
+                    return callback(err);
+                }
+                /* istanbul ignore if: out of scope */
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            };
 
-        if (this._service) {
-            if (this.mode === Subscriber.modes.subscribe) {
-                this._service.redis.unsubscribe.apply(this._service.redis, args);
+            let args = [];
+            if (channels) {
+                args = [].concat(channels); // given channels
             } else {
-                this._service.redis.punsubscribe.apply(this._service.redis, args);
+                args = [].concat(this.channels); // all channels if none given
             }
-        } else {
-            if (callback) callback(new Error('Subscriber: Not connected to redis'));
-        }
+
+            args.push(done);
+
+            if (this._service) {
+                if (this.mode === Subscriber.modes.subscribe) {
+                    this._service.redis.unsubscribe.apply(this._service.redis, args);
+                } else {
+                    this._service.redis.punsubscribe.apply(this._service.redis, args);
+                }
+            } else {
+                done(new Error('Subscriber: Not connected to redis'));
+            }
+        });
     }
 
     /**
@@ -189,14 +205,29 @@ class Subscriber extends EventEmitter {
      * @param callback
      */
     quit(callback) {
-        this.unsubscribe((err) => {
-            /* istanbul ignore if: out of scope */
-            if (err) {
-                this.app.report('Blew up unsubscribing from Redis', err, this.channels, this.mode);
-            }
-            this._service.redis.quit(callback);
-            this._service = null;
+        return new Promise((resolve, reject) => {
+
+            const done = (err) => {
+                if (callback) return callback(err);
+                /* istanbul ignore if: out of scope */
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            };
+
+            this.unsubscribe((err) => {
+                /* istanbul ignore if: out of scope */
+                if (err) {
+                    this.app.report('Blew up unsubscribing from Redis', err, this.channels, this.mode);
+                }
+                this._service.redis.quit(done);
+                // noinspection JSUnusedGlobalSymbols
+                this._service = null;
+            });
         });
+
     }
 
 

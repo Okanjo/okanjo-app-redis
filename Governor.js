@@ -44,51 +44,58 @@ class Governor {
      * @param callback
      */
     runTask(closure, callback) {
+        return new Promise((resolve, reject) => {
 
-        // Try to obtain a lock on each concurrency "worker"
-        // The first to come through will abort the subsequent locks
+            // Try to obtain a lock on each concurrency "worker"
+            // The first to come through will abort the subsequent locks
 
-        let gotLock = false;
-        let calledBack = false;
-        let workersCompleted = 0;
+            let gotLock = false;
+            let calledBack = false;
+            let workersCompleted = 0;
 
-        const run = (workerNumber) => {
-            let canReply = false;
-            this.service.lock(
-                this.locker,
-                `${this.prefix}:worker:${workerNumber}`,
-                this.ttl,
-                (unlock, lock) => {
-                    if (!gotLock) {
-                        // We're the first to get the lock on this task!
-                        gotLock = true;
-                        canReply = true;
+            const run = (workerNumber) => {
+                let canReply = false;
+                this.service.lock(
+                    this.locker,
+                    `${this.prefix}:worker:${workerNumber}`,
+                    this.ttl,
+                    (unlock, lock) => {
+                        if (!gotLock) {
+                            // We're the first to get the lock on this task!
+                            gotLock = true;
+                            canReply = true;
 
-                        // Pass on the unlock callback/ lock for extensions
-                        closure(unlock, lock, workerNumber);
-                    } else {
-                        // Already locked, abort
-                        unlock();
+                            // Pass on the unlock callback/ lock for extensions
+                            closure(unlock, lock, workerNumber);
+                        } else {
+                            // Already locked, abort
+                            unlock();
+                        }
+                    },
+                    (err) => {
+                        // callback if this worker ran the task or was the last worker to fire (process of elimination)
+                        workersCompleted++;
+                        if (!calledBack && (canReply || workersCompleted >= this.maximumConcurrency)) {
+                            // we're the first to callback, so do that
+                            calledBack = true;
+                            if (callback) return callback(err);
+                            if (err) {
+                                return reject(err);
+                            } else {
+                                return resolve();
+                            }
+                        }
+                        // If already called back, then obviously don't do it again
                     }
-                },
-                (err) => {
-                    // callback if this worker ran the task or was the last worker to fire (process of elimination)
-                    workersCompleted++;
-                    if (!calledBack && (canReply || workersCompleted >= this.maximumConcurrency)) {
-                        // we're the first to callback, so do that
-                        calledBack = true;
-                        callback(err);
-                    }
-                    // If already called back, then obviously don't do it again
-                }
-            );
-        };
+                );
+            };
 
 
-        for (let i = 0; i < this.maximumConcurrency; i++) {
-            this._updateNextWorker();
-            run(this._nextWorker);
-        }
+            for (let i = 0; i < this.maximumConcurrency; i++) {
+                this._updateNextWorker();
+                run(this._nextWorker);
+            }
+        });
     }
 
 }

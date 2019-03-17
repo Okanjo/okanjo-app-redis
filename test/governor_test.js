@@ -45,7 +45,7 @@ describe('Governor', () => {
             let tasksCompleted = 0;
             let tasksToRun = 10;
 
-            const task = (unlock, lock, w, i) => {
+            const task = (unlock, lock/*, w, i*/) => {
                 should(unlock).be.a.Function();
                 should(lock).be.ok();
 
@@ -103,9 +103,17 @@ describe('Governor', () => {
 
             for (let i = 0; i < tasksToRun; i++) {
                 ((i) => {
-                    setImmediate(() => governor.runTask((unlock, lock, w) => {
-                        task(unlock, lock, w, i);
-                    }, (err) => {
+                    setImmediate(async () => {
+                        let err;
+                        try {
+                            err = null;
+                            await governor.runTask((unlock, lock, w) => {
+                                task(unlock, lock, w, i);
+                            });
+                        } catch(e) {
+                            err = e;
+                        }
+
                         // console.log(`Finishd task: ${i}`);
                         if (i === 3) {
                             should(err).be.ok();
@@ -117,7 +125,7 @@ describe('Governor', () => {
                         if (tasksCompleted === tasksToRun) {
                             setTimeout(done, 100); // redlock needs a bit to catch up and clean locks i think
                         }
-                    }));
+                    });
                 })(i);
             }
         });

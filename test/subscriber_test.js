@@ -61,7 +61,9 @@ describe('RedisService', () => {
             state.got_subscribe_event = true;
 
             // Send the message
-            app.services.redis.publish(state.channel_name, state.message);
+            app.services.redis.publish(state.channel_name, state.message, (err) => {
+                should(err).not.be.ok();
+            });
         });
 
         sub.on('message', (event) => {
@@ -85,6 +87,84 @@ describe('RedisService', () => {
 
                 done();
             });
+
+        });
+
+        sub.on('unsubscribe', (event) => {
+            state.got_subscriber.should.be.exactly(true);
+            state.got_subscribe_event.should.be.exactly(true);
+            state.got_message_event.should.be.exactly(true);
+            state.got_unsubscribe_event.should.be.exactly(false);
+
+            state.got_unsubscribe_event = true;
+
+            event.channel.should.be.exactly(state.channel_name);
+            event.count.should.be.exactly(0);
+            sub.isSubscribed().should.be.exactly(false);
+        });
+
+    });
+
+    it('should handle subscribe operations (async)', (done) => {
+
+        const state = {
+            channel_name: 'unit.test',
+            message: { number: 1, string: "poop" },
+            got_subscriber: false,
+            got_subscribe_event: false,
+            got_message_event: false,
+            got_unsubscribe_event: false
+        };
+
+        const sub = app.services.redis.getSubscriber([state.channel_name]);
+
+        sub.should.be.instanceOf(Subscriber);
+        sub.should.be.instanceOf(EventEmitter);
+
+        state.got_subscriber.should.be.exactly(false);
+        state.got_subscribe_event.should.be.exactly(false);
+        state.got_message_event.should.be.exactly(false);
+        state.got_unsubscribe_event.should.be.exactly(false);
+        state.got_subscriber = true;
+
+        sub.isSubscribed().should.be.exactly(false);
+
+        sub.on('subscribe', (event) => {
+            state.got_subscriber.should.be.exactly(true);
+            state.got_subscribe_event.should.be.exactly(false);
+            state.got_message_event.should.be.exactly(false);
+            state.got_unsubscribe_event.should.be.exactly(false);
+
+            event.channel.should.be.exactly(state.channel_name);
+            event.count.should.be.exactly(1);
+            sub.isSubscribed().should.be.exactly(true);
+            state.got_subscribe_event = true;
+
+            // Send the message
+            app.services.redis.publish(state.channel_name, state.message, (err) => {
+                should(err).not.be.ok();
+            });
+        });
+
+        sub.on('message', async (event) => {
+            state.got_subscriber.should.be.exactly(true);
+            state.got_subscribe_event.should.be.exactly(true);
+            state.got_message_event.should.be.exactly(false);
+            state.got_unsubscribe_event.should.be.exactly(false);
+            state.got_message_event = true;
+
+            event.message.should.deepEqual(state.message);
+            event.channel.should.be.exactly(state.channel_name);
+
+            await sub.quit();
+            state.got_subscriber.should.be.exactly(true);
+            state.got_subscribe_event.should.be.exactly(true);
+            state.got_message_event.should.be.exactly(true);
+            state.got_unsubscribe_event.should.be.exactly(true);
+
+            sub.isSubscribed().should.be.exactly(false);
+
+            done();
 
         });
 
@@ -127,7 +207,7 @@ describe('RedisService', () => {
 
         sub.isSubscribed().should.be.exactly(false);
 
-        sub.on('subscribe', (event) => {
+        sub.on('subscribe', async (event) => {
             state.got_subscriber.should.be.exactly(true);
             state.got_subscribe_event.should.be.exactly(false);
             state.got_message_event.should.be.exactly(false);
@@ -139,7 +219,7 @@ describe('RedisService', () => {
             state.got_subscribe_event = true;
 
             // Send the message
-            app.services.redis.publish(state.channel_name, state.message);
+            await app.services.redis.publish(state.channel_name, state.message);
         });
 
         sub.on('message', (event) => {
@@ -261,7 +341,6 @@ describe('RedisService', () => {
 
     });
 
-
     it('should handle psubscribe operations with default (all) channels', (done) => {
 
         const state = {
@@ -302,7 +381,7 @@ describe('RedisService', () => {
             app.services.redis.publish(state.channel_name, state.message);
         });
 
-        sub.on('message', (event) => {
+        sub.on('message', async (event) => {
             state.got_subscriber.should.be.exactly(true);
             state.got_subscribe_event.should.be.exactly(true);
             state.got_message_event.should.be.exactly(false);
@@ -313,28 +392,27 @@ describe('RedisService', () => {
             event.channel.should.be.exactly(state.channel_name);
             event.pattern.should.be.exactly(state.pattern_name);
 
-            sub.unsubscribe(state.pattern_name, (err) => {
+            await sub.unsubscribe(state.pattern_name);
+
+
+            // Should have unsubscribed, but quit will trigger another, so fudge it back
+            state.got_unsubscribe_event.should.be.exactly(true);
+            state.got_unsubscribe_event = false;
+
+            sub.quit(async (err) => {
                 should(err).be.exactly(null);
-
-                // Should have unsubscribed, but quit will trigger another, so fudge it back
+                state.got_subscriber.should.be.exactly(true);
+                state.got_subscribe_event.should.be.exactly(true);
+                state.got_message_event.should.be.exactly(true);
                 state.got_unsubscribe_event.should.be.exactly(true);
-                state.got_unsubscribe_event = false;
 
-                sub.quit((err) => {
-                    should(err).be.exactly(null);
-                    state.got_subscriber.should.be.exactly(true);
-                    state.got_subscribe_event.should.be.exactly(true);
-                    state.got_message_event.should.be.exactly(true);
-                    state.got_unsubscribe_event.should.be.exactly(true);
+                sub.isSubscribed().should.be.exactly(false);
 
-                    sub.isSubscribed().should.be.exactly(false);
-
-                    // this won't do anything
-                    sub.unsubscribe();
-                    sub.unsubscribe((err) => {
-                        should(err).match(/Not connected/);
-                        done();
-                    });
+                // this won't do anything
+                try { await sub.unsubscribe(); } catch (e) { should(e).be.ok(); }
+                sub.unsubscribe((err) => {
+                    should(err).match(/Not connected/);
+                    done();
                 });
             });
         });
