@@ -1,10 +1,10 @@
 "use strict";
 
 const Redis = require('redis');
+const RedisCommands = require('redis-commands');
 const Redlock = require('redlock');
 const Subscriber = require('./Subscriber');
 const Governor = require('./Governor');
-const Util = require('util');
 
 /**
  * Redis management service
@@ -20,11 +20,11 @@ class RedisService {
     constructor(app, config, callback) {
         this.app = app;
 
-        this.config = config || this.app.config.redis;
-        this.redlockConfig = this.config.redlock || this.app.config.redlock;
+        this._config = config || this.app.config.redis;
+        this._redlockConfig = this._config.redlock || this.app.config.redlock;
 
-        this.resourceLockKeyPrefix = this.config.resourceLockKeyPrefix || `${this.app.currentEnvironment}:resource-lock`;
-        this.resourceLockTTL = this.config.resourceLockTTL || 5000; // 5 sec
+        this._resourceLockKeyPrefix = this._config.resourceLockKeyPrefix || `${this.app.currentEnvironment}:resource-lock`;
+        this._resourceLockTTL = this._config.resourceLockTTL || 5000; // 5 sec
 
         this.redis = null;
         this._reconnecting = false;
@@ -67,7 +67,7 @@ class RedisService {
     connect(callback) {
 
         // Connect to redis and callback when the connection is ready
-        this.redis = Redis.createClient(this.config);
+        this.redis = Redis.createClient(this._config);
         /* istanbul ignore next: error/reconnecting events out of scope */
         this.redis
             .once('ready', () => this._handleReady(callback))
@@ -75,11 +75,18 @@ class RedisService {
             .on('error', (err) => this._handleError(err))
             .on('reconnecting', (event) => this._handleReconnect(event));
 
-        this._publish = Util.promisify(this.redis.publish.bind(this.redis));
+
+        // alias each redis api command to the service
+        RedisCommands.list.forEach(command => {
+            this.wrapCommand(command);
+        });
+
+        // Override publish command
+        this.wrapPublish();
 
         // Init redlock (distributed mutex locks) on the client instance
-        if (this.redlockConfig) {
-            this.redlock = this.createRedlock(this.redlockConfig);
+        if (this._redlockConfig) {
+            this.redlock = this.createRedlock(this._redlockConfig);
         }
 
         // Maybe we should bind process SIGINT and SIGTERM events
@@ -145,12 +152,12 @@ class RedisService {
      * @param notCachedClosure
      * @param [callback]
      */
-    getSet(key, notCachedClosure, callback) {
+    getOrSet(key, notCachedClosure, callback) {
         return new Promise((resolve, reject) => {
             this.redis.get(key, (err, res) => {
                 /* istanbul ignore if: redis edge case */
                 if (err) {
-                    this.app.report("Blew up in redis getSet", err, key);
+                    this.app.report("Blew up in redis getOrSet", err, key);
                     if (callback) return callback(err, undefined, false);
                     return reject(err);
                 } else {
@@ -158,7 +165,7 @@ class RedisService {
                         try {
                             res = JSON.parse(res);
                         } catch (e) {
-                            this.app.report("Blew up parsing redis key value in getSet", e, key);
+                            this.app.report("Blew up parsing redis key value in getOrSet", e, key);
                             if (callback) return callback(e, undefined, false);
                             return reject(e);
                         }
@@ -237,8 +244,8 @@ class RedisService {
      * @param {function(err:object)} callback - Fired when lock has been released or there was an error obtaining the lock
      */
     lockResource(resource_type, resource_id, whenLocked, callback) {
-        const key = `${this.resourceLockKeyPrefix}:${resource_type}:${resource_id}`;
-        return this.lock(this.redlock, key, this.resourceLockTTL, whenLocked, callback);
+        const key = `${this._resourceLockKeyPrefix}:${resource_type}:${resource_id}`;
+        return this.lock(this.redlock, key, this._resourceLockTTL, whenLocked, callback);
     }
 
     /**
@@ -258,7 +265,7 @@ class RedisService {
         options.channels = channels;
         options.mode = options.mode || Subscriber.modes.subscribe;
 
-        return new Subscriber(this.app, this.config, options);
+        return new Subscriber(this.app, this._config, options);
     }
 
     /**
@@ -271,20 +278,46 @@ class RedisService {
             mode: Subscriber.modes.psubscribe,
             channels: channelPatterns
         };
-        return new Subscriber(this.app, this.config, options);
+        return new Subscriber(this.app, this._config, options);
     }
 
     /**
-     * Publishes a message object to a given channel (use this with subscribers)
-     * @param {string} channel – Channel name
-     * @param {obj} message - Message payload
-     * @param {function} [callback] – Function to fire when completed
+     * Wraps a redis client command with a promise and error reporting
+     * @param methodName
      */
-    publish(channel, message, callback) {
-        if (callback) {
-            this.redis.publish(channel, JSON.stringify(message), callback);
-        } else {
-            return this._publish(channel, JSON.stringify(message));
+    wrapCommand(methodName) {
+        this[`${methodName}`] = (...args) => {
+            return new Promise((resolve, reject) => {
+                args.push((err, res) => {
+                    /* istanbul ignore if: out of scope */
+                    if (err) {
+                        this.app.report(`RedisService: Command '${methodName}' failed`, err, { args });
+                        reject(err);
+                    } else {
+                        resolve(res);
+                    }
+                });
+                this.redis[methodName].apply(this.redis, args);
+            });
+        }
+    }
+
+    /**
+     * Wraps the publish command with a promise
+     */
+    wrapPublish() {
+        this.publish = (channel, message) => {
+            return new Promise((resolve, reject) => {
+                this.redis.publish(channel, JSON.stringify(message), (err, res) => {
+                    /* istanbul ignore if: out of scope */
+                    if (err) {
+                        this.app.report(`RedisService: Command 'publish' failed`, err, { channel, message });
+                        reject(err);
+                    } else {
+                        resolve(res);
+                    }
+                });
+            });
         }
     }
 }

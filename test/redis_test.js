@@ -68,12 +68,12 @@ describe('RedisService', function() {
 
     });
 
-    it('can getset properly', function(done) {
+    it('can getOrSet properly', function(done) {
 
         const redis = app.services.redis,
-            key = 'unit_test_getset_cache_key';
+            key = 'unit_test_getOrSet_cache_key';
 
-        redis.getSet(
+        redis.getOrSet(
             // Cache key
             key,
 
@@ -94,7 +94,7 @@ describe('RedisService', function() {
                 // Now do it again, it should be cached
                 //
 
-                redis.getSet(
+                redis.getOrSet(
                     // Cache key
                     key,
 
@@ -117,7 +117,7 @@ describe('RedisService', function() {
 
                         setTimeout(() => {
 
-                            redis.getSet(
+                            redis.getOrSet(
                                 // Cache key
                                 key,
 
@@ -146,12 +146,12 @@ describe('RedisService', function() {
 
     });
 
-    it('can getset properly (async)', async () => {
+    it('can getOrSet properly (async)', async () => {
 
         const redis = app.services.redis,
-            key = 'unit_test_getset_cache_key2';
+            key = 'unit_test_getOrSet_cache_key2';
 
-        const obj = await redis.getSet(
+        const obj = await redis.getOrSet(
             // Cache key
             key,
 
@@ -164,7 +164,7 @@ describe('RedisService', function() {
 
         obj.should.deepEqual({ ok: true, val: 1 });
 
-        const obj2 = await redis.getSet(
+        const obj2 = await redis.getOrSet(
             // Cache key
             key,
 
@@ -179,12 +179,12 @@ describe('RedisService', function() {
 
     });
 
-    it('should handle getSet cancellation', function(done) {
+    it('should handle getOrSet cancellation', function(done) {
 
         const redis = app.services.redis,
-            key = 'unit_test_getset_error_cache_key';
+            key = 'unit_test_getOrSet_error_cache_key';
 
-        redis.getSet(
+        redis.getOrSet(
             // Cache key
             key,
 
@@ -207,13 +207,13 @@ describe('RedisService', function() {
 
     });
 
-    it('should handle getSet cancellation (async)', async () => {
+    it('should handle getOrSet cancellation (async)', async () => {
 
         const redis = app.services.redis,
-            key = 'unit_test_getset_error_cache_key2';
+            key = 'unit_test_getOrSet_error_cache_key2';
 
         try {
-            await redis.getSet(
+            await redis.getOrSet(
                 // Cache key
                 key,
 
@@ -234,9 +234,9 @@ describe('RedisService', function() {
 
     it('should handle setting undefined', function(done) {
         const redis = app.services.redis,
-            key = 'unit_test_getset_undefined_cache_key';
+            key = 'unit_test_getOrSet_undefined_cache_key';
 
-        redis.getSet(
+        redis.getOrSet(
             // Cache key
             key,
 
@@ -252,7 +252,7 @@ describe('RedisService', function() {
                 should(obj).be.exactly(undefined);
                 cached.should.be.exactly(false); // First time around should not be cached
 
-                redis.getSet(
+                redis.getOrSet(
                     // Cache key
                     key,
 
@@ -277,14 +277,14 @@ describe('RedisService', function() {
 
     it('should handle json parse issues', function(done) {
         const redis = app.services.redis,
-            key = 'unit_test_getset_error_cache_key';
+            key = 'unit_test_getOrSet_error_cache_key';
 
         // Set a key with invalid json
         redis.redis.set(key, "this is not json", 'PX', 50, (err) => {
             should(err).not.be.ok();
 
-            // Now try getSet'ing it
-            redis.getSet(
+            // Now try getOrSet'ing it
+            redis.getOrSet(
                 // Cache key
                 key,
 
@@ -308,14 +308,14 @@ describe('RedisService', function() {
 
     it('should handle json parse issues (async)', async () => {
         const redis = app.services.redis,
-            key = 'unit_test_getset_error_cache_key2';
+            key = 'unit_test_getOrSet_error_cache_key2';
 
         // Set a key with invalid json
         const set = Util.promisify(redis.redis.set.bind(redis.redis));
         await set(key, "this is not json", 'PX', 50);
 
         try {
-            await redis.getSet(
+            await redis.getOrSet(
                 // Cache key
                 key,
 
@@ -330,6 +330,17 @@ describe('RedisService', function() {
             should(err).be.ok();
             err.should.match(/SyntaxError/);
         }
+    });
+
+    describe('Wrapped Commands', () => {
+
+        it('should handle wrapped commands', async () => {
+            await app.services.redis.set('unit_test_wrapper_key', 'hello there');
+            const res = await app.services.redis.get('unit_test_wrapper_key');
+            should(res).be.ok();
+            res.should.be.exactly('hello there');
+        });
+
     });
 
     describe('Resource locking', () => {

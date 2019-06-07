@@ -8,8 +8,16 @@ This package:
 
 * Manages connectivity and reconnection edge cases
 * Includes Redlock for distributed mutex locking and synchronization
-* Provides utility functions for common operations (e.g. getSet, resource locking, etc) 
+* Provides utility functions for common operations (e.g. getOrSet, resource locking, etc) 
 * Provides pub-sub interfaces
+
+## Breaking Changes
+
+### 3.0
+ * `getSet` has been renamed to `getOrSet`
+ * `publish` no longer takes a callback, only returns a Promise
+ * Most RedisService properties have been prefixed with `_`
+ * All Redis commands have been wrapped and exposed directly on RedisService (e.g. service.get, service.set, ...)  
 
 ## Installing
 
@@ -308,10 +316,10 @@ Redis management class. Must be instantiated to be used.
 
 ## Properties
 * `service.app` – (read-only) The OkanjoApp instance provided when constructed
-* `service.config` – (read-only) The redis service configuration provided when constructed
-* `service.redlockConfig` – (read-only) The redlock configuration provided when constructed
-* `service.resourceLockKeyPrefix` – (read-only) The prefix to use on resource lock key names
-* `service.resourceLockTTL` – (read-only) The default maximum amount of time a resource lock will live for, before manual renewing
+* `service._config` – (read-only) The redis service configuration provided when constructed
+* `service._redlockConfig` – (read-only) The redlock configuration provided when constructed
+* `service._resourceLockKeyPrefix` – (read-only) The prefix to use on resource lock key names
+* `service._resourceLockTTL` – (read-only) The default maximum amount of time a resource lock will live for, before manual renewing
 * `service.redis` – (read-only) The underlying [node_redis](https://github.com/NodeRedis/node_redis) connection 
 
 ## Methods
@@ -326,11 +334,22 @@ Creates a new redis service instance.
   * `config.resourceLockTTL` – How long a resource lock should live for before having to be extended or expires in milliseconds. Defaults to `5000` (5s). 
 * `callback` – (Optional) Function to fire as soon as redis is connected
 
+### `service[redisCommandName](...args)`
+All Redis commands are wrapped with a promise and exposed as service.command(args). 
+ * Do not provide a callback.
+ * Arguments are variable to the command being executed.
+
+Example:
+```js
+await app.services.redis.set('your_key', 'hello there');
+const res = await app.services.redis.get('your_key'); // res = 'hello there'
+```
+
 ### `service.createRedlock(config)`
 Creates a new redlock instance. Useful for creating different locking algorithms for different purposes, where a one-size-fits-all approach does not work.
 * `config` – Redlock configuration object. See [node-redlock](https://github.com/mike-marcacci/node-redlock#configuration) for additional options.
 
-### `service.getSet(key, notCachedClosure, [callback])`
+### `service.getOrSet(key, notCachedClosure, [callback])`
 * Gets a value, or sets the value if not already set. Useful for cache lookups.
 * `key` - String key name to fetch
 * `notCachedClosure((err, obj, ttl) => {...})` – Function to fire when the value is not cached in redis. The function is expected to callback with the value to cache.
@@ -348,7 +367,7 @@ Cached values are JSON serialized, so you can safely send it nearly anything. If
 This utility function makes using cached values super simple. For example:
 
 ```js
-service.getSet(
+service.getOrSet(
     'cache_key',
     (setCache) => {
         setCache(null, { hello: 'world' }, 15000); // Store this object for 15s
@@ -405,11 +424,10 @@ Gets a new Subscriber class instance. The redis connection of the service is clo
 Gets a new Subscriber class instance that subscribes to channel patterns instead channel names.
 * `channelPatterns` – Array of channel patterns (e.g. psubscribe) to subscribe to. For example, `my_channel_*`
  
-### `service.publish(channel, message, [callback])`
+### `service.publish(channel, message)`
 Publishes a message to a channel.
 * `channel` – The name of the channel to publish to
 * `message` – The object to publish to the channel. JSON.stringify is used to serialize objects.
-* `callback(err)` – (Optional) Function to fire when done publishing
 
 ## Events
 

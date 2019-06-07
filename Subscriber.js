@@ -139,7 +139,7 @@ class Subscriber extends EventEmitter {
             message = JSON.parse(message);
         } catch (e)  {
             /* istanbul ignore next: out of scope */
-            this.app.report('Could not parse JSON out of Subscriber onMessage hook', e, channel, message, pattern);
+            this.app.report('Could not parse JSON out of Subscriber onMessage hook', e, { channel, message, pattern });
         }
         this.emit('message', { channel, message, pattern });
     }
