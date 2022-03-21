@@ -1,6 +1,6 @@
 # Okanjo Redis Service
 
-[![Build Status](https://travis-ci.org/Okanjo/okanjo-app-redis.svg?branch=master)](https://travis-ci.org/Okanjo/okanjo-app-redis) [![Coverage Status](https://coveralls.io/repos/github/Okanjo/okanjo-app-redis/badge.svg?branch=master)](https://coveralls.io/github/Okanjo/okanjo-app-redis?branch=master)
+[![Node.js CI](https://github.com/Okanjo/okanjo-app-redis/actions/workflows/node.js.yml/badge.svg)](https://github.com/Okanjo/okanjo-app-redis/actions/workflows/node.js.yml) [![Coverage Status](https://coveralls.io/repos/github/Okanjo/okanjo-app-redis/badge.svg?branch=master)](https://coveralls.io/github/Okanjo/okanjo-app-redis?branch=master)
 
 Service for interfacing with Redis for the Okanjo App ecosystem.
 
@@ -12,6 +12,11 @@ This package:
 * Provides pub-sub interfaces
 
 ## Breaking Changes
+
+### 4.0
+ * Updated to node-redis 3.1.2
+ * Updated redlock to v4.2.0
+ * Updated to okanjo-app v3
 
 ### 3.0
  * `getSet` has been renamed to `getOrSet`
@@ -546,8 +551,8 @@ Before you can run the tests, you'll need a working Redis server. We suggest usi
 For example:
 
 ```bash
-docker pull redis:3
-docker run -d -p 6379:6379 redis:3
+docker pull redis:6.2.6
+docker run -d -p 6379:6379 redis:6.2.6
 ```
 
 To run unit tests and code coverage:

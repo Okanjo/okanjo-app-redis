@@ -3,9 +3,10 @@ const Util = require('util');
 
 describe('RedisService', function() {
 
-    const RedisService = require('../RedisService'),
-        OkanjoApp = require('okanjo-app'),
-        config = require('./config');
+    const RedisService = require('../RedisService');
+    const OkanjoApp = require('okanjo-app');
+    const config = require('./config');
+
     let app;
 
     // Init

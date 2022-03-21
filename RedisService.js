@@ -17,7 +17,7 @@ class RedisService {
      * @param config
      * @param [callback]
      */
-    constructor(app, config, callback) {
+    constructor(app, config, callback=null) {
         this.app = app;
 
         this._config = config || this.app.config.redis;
@@ -37,12 +37,13 @@ class RedisService {
                 if (callback) callback(err); // constructor callback
             });
         } else {
-            app._serviceConnectors.push((cb) => {
-                this.connect((err) => {
-                    if (callback) callback(err); // constructor callback
-                    cb(err); // app service callback
+            app._serviceConnectors.push(new Promise((resolve) => {
+                console.log('starting redis')
+                this.connect(() => {
+                    if (callback) callback(); // constructor callback
+                    resolve();
                 });
-            });
+            }));
         }
 
     }
