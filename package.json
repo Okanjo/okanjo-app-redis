@@ -1,6 +1,6 @@
 {
   "name": "okanjo-app-redis",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "Service for interfacing with Redis",
   "main": "RedisService.js",
   "scripts": {

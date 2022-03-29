@@ -37,13 +37,14 @@ class RedisService {
                 if (callback) callback(err); // constructor callback
             });
         } else {
-            app._serviceConnectors.push(new Promise((resolve) => {
-                console.log('starting redis')
-                this.connect(() => {
-                    if (callback) callback(); // constructor callback
-                    resolve();
+            app.registerServiceConnector(async () => {
+                new Promise((resolve) => {
+                    this.connect(() => {
+                        if (callback) callback(); // constructor callback
+                        resolve();
+                    });
                 });
-            }));
+            });
         }
 
     }
